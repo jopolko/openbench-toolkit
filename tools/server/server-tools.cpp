@@ -29,13 +29,7 @@ static std::vector<char *> to_cstr_vec(const std::vector<std::string> & v) {
     return r;
 }
 
-struct run_proc_result {
-    std::string output;
-    int  exit_code = -1;
-    bool timed_out = false;
-};
-
-static run_proc_result run_process(
+run_proc_result run_process(
         const std::vector<std::string> & args,
         size_t max_output,
         int timeout_secs) {

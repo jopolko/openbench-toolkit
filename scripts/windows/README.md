@@ -5,6 +5,21 @@ distribution philosophy is **ship small**: only our own DLLs + `llama-server.exe
 are bundled. The large vendor runtimes (NVIDIA CUDA, Microsoft VC++) are **not**
 bundled - they are fetched on demand from their official sources.
 
+## Chat-only desktop shortcut
+
+For day-to-day use, `Launch-Openbench-Chat.bat` starts llama-server in router
+mode (browse/download/load models from the webUI, no model to pick up front)
+and opens the webUI in your browser - nothing pentest-related. Double-click it,
+or pin a real desktop icon to it once:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\create-desktop-shortcut.ps1
+```
+
+If/when you need pentest, use the **"Enable pentest"** button inside the
+webUI's `/pentest` panel instead of starting anything separately - see
+PENTEST_APPLIANCE.md section 4.8.
+
 ## One launcher for everything
 
 ```powershell
@@ -29,10 +44,13 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\start-openbench.ps1
 
 `start-openbench.ps1` resolves the model, starts `llama-server` with sane flags
 (`-fa on`, `-ctk/-ctv q8_0` unless `-NoKvQuant`, **`--ui-mcp-proxy`** which the
-webUI's Metasploit MCP entry needs, `--moe-stream` only with `-MoeStream`), waits
-for `/health`, then optionally brings up the pentest MCP stack (`-Pentest`) and
-the interp results sidecar (`-Interp`). Logs land in `%USERPROFILE%\.openbench\logs\`.
-`-ExtraArgs` passes anything else straight through to `llama-server`.
+webUI's Metasploit MCP entry needs, **`--enable-pentest-launch
+--pentest-launch-cmd "..."`** which wires up the webUI's "Enable pentest"
+button to `enable-pentest.ps1` (see below), `--moe-stream` only with
+`-MoeStream`), waits for `/health`, then optionally brings up the pentest stack
+right away (`-Pentest` - same thing the button does) and the interp results
+sidecar (`-Interp`). Logs land in `%USERPROFILE%\.openbench\logs\`. `-ExtraArgs`
+passes anything else straight through to `llama-server`.
 
 **`-Router`** starts multi-model mode instead: no single `-m`, but
 `--models-dir %USERPROFILE%\.openbench\models` + `--models-preset ...\models.ini`
@@ -130,3 +148,28 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\start-pentest-mcp.ps1
 `MetasploitMCP.py --transport http` (SSE on :8085). In the webui: **MCP Servers
 → Metasploit → Connect** - it routes through `llama-server`'s CORS proxy
 (`useProxy: true` is already set on that entry).
+
+## The `/pentest` panel and `enable-pentest.ps1`
+
+The dedicated `/pentest` panel (phase-gated recon/exploit agent, nmap, ZAP,
+PDF reports - not the same thing as chatting with the Metasploit MCP tool
+above) needs one more piece beyond `start-pentest-mcp.ps1`:
+`tools\pentest_ui_api.py` (the `pentest-ui-api` sidecar, :8086) running from
+the same venv as `MetasploitMCP`. `enable-pentest.ps1` starts both in one
+shot - it's what the webUI's "Enable pentest" button runs, and just as usable
+by hand:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\enable-pentest.ps1
+# tear both back down
+powershell -ExecutionPolicy Bypass -File scripts\windows\enable-pentest.ps1 -Stop
+```
+
+This is "start", not "install" - run `setup-pentest-mcp.ps1` first if you
+haven't. It also doesn't install `nmap` - get it from
+[nmap.org](https://nmap.org/download.html) and make sure it's on `PATH`;
+without it, recon's `nmap_scan` tool reports "not installed" but everything
+else still works. OS fingerprinting/SYN scans additionally need this process
+elevated (Administrator) - Npcap's raw-socket access on Windows is gated on
+that instead of the Linux capability bits this stack uses elsewhere; without
+it, nmap still runs, just with a slower (but equally correct) connect scan.

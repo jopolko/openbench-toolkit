@@ -76,6 +76,7 @@ function Stop-Port([int] $p, [string] $label) {
 if ($Stop) {
     Step 'stopping openbench'
     Stop-Port $Port       'llama-server'
+    Stop-Port 8086        'pentest-ui-api'
     Stop-Port 8085        'MetasploitMCP'
     Stop-Port 55553       'msfrpcd'
     Stop-Port $InterpPort 'interp sidecar'
@@ -137,6 +138,16 @@ Start-Sleep 1
 $srvArgs = @('-fa', 'on', '--ui-mcp-proxy', '--host', $Bind, '--port', "$Port")
 if (-not $NoKvQuant) { $srvArgs += @('-ctk', 'q8_0', '-ctv', 'q8_0') }
 
+# Wires up the webUI's "Enable pentest" button (POST /pentest/enable) to
+# enable-pentest.ps1 - same "do not expose to untrusted environments" trust
+# level as --ui-mcp-proxy right above, which this launcher already turns on
+# unconditionally for the same reason: this is your own box, not a shared
+# deployment. The button is still a no-op without this - see
+# PENTEST_APPLIANCE.md section 4.8.
+$pentestLaunchScript = Join-Path $PSScriptRoot 'enable-pentest.ps1'
+$pentestLaunchCmd    = "powershell -ExecutionPolicy Bypass -File `"$pentestLaunchScript`""
+$srvArgs += @('--enable-pentest-launch', '--pentest-launch-cmd', $pentestLaunchCmd)
+
 if ($Router) {
     # multi-model: the webUI's Models page can download + hot-load. router_available
     # gates on --models-preset, so the ini must exist (the picker appends to it).
@@ -186,10 +197,13 @@ foreach ($i in 1..120) {
 if (-not $ok) { Die "llama-server didn't answer /health in 120s - see $srvLog" }
 Info "up"
 
-# --- pentest MCP stack -------------------------------------------------
+# --- pentest stack -------------------------------------------------
 if ($Pentest) {
-    Step 'Metasploit MCP'
-    & (Join-Path $PSScriptRoot 'start-pentest-mcp.ps1') -Detach
+    Step 'Pentest stack'
+    # Same thing the webUI's "Enable pentest" button does (msfrpcd +
+    # MetasploitMCP + pentest-ui-api) - -Pentest from the CLI and the button
+    # end up in the same place.
+    & $pentestLaunchScript
 }
 
 # --- interp sidecar -------------------------------------------------

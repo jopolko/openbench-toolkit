@@ -3,6 +3,23 @@
 #include "server-common.h"
 #include "server-http.h"
 
+#include <string>
+#include <vector>
+
+// Cross-platform run-and-capture helper (exec_shell_command's own backing
+// implementation) - exposed here so other callers (the pentest-launch route
+// in server.cpp) can reuse the same spawn/timeout/output-capture logic
+// instead of a second copy of it.
+struct run_proc_result {
+    std::string output;
+    int  exit_code = -1;
+    bool timed_out = false;
+};
+run_proc_result run_process(
+        const std::vector<std::string> & args,
+        size_t max_output,
+        int timeout_secs);
+
 struct server_tool {
     std::string name;
     std::string display_name;

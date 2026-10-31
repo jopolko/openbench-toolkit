@@ -34,6 +34,14 @@ official sources. Just launch:
 scripts\windows\llama-server.cmd --moe-stream --host 0.0.0.0 --port 8080
 ```
 
+Or, for day-to-day use, double-click `scripts\windows\Launch-Openbench-Chat.bat`
+(router mode, opens the webUI for you) - see
+[`scripts/windows/README.md`](scripts/windows/README.md#chat-only-desktop-shortcut)
+for pinning a real desktop icon to it. Pentest (Metasploit/nmap/ZAP) isn't part
+of that launch - use the webUI's **"Enable pentest"** button on the `/pentest`
+panel when you need it instead ([PENTEST_APPLIANCE.md](PENTEST_APPLIANCE.md)
+section 4.8).
+
 On first run this preflights three runtime tiers and remediates anything missing
 from the official source, no manual downloads:
 

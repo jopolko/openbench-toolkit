@@ -660,6 +660,13 @@ struct common_params {
     bool ui_mcp_proxy = false;
     std::string ui_config_json;
 
+    // pentest launch (EXPERIMENTAL): lets the webUI's "Enable pentest" button bring up
+    // the openbench pentest appliance stack (Metasploit MCP, pentest-ui-api) via a
+    // fixed, operator-configured command - never anything derived from the request.
+    // See PENTEST_APPLIANCE.md and scripts/windows/enable-pentest.ps1.
+    bool enable_pentest_launch = false;
+    std::string pentest_launch_cmd;
+
     // "advanced" endpoints are disabled by default for better security
     bool endpoint_slots   = true;
     bool endpoint_props   = false; // only control POST requests, not GET

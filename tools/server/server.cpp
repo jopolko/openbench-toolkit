@@ -300,6 +300,42 @@ int llama_server(int argc, char ** argv) {
         ctx_http.post("/cors-proxy",      ex_wrapper(res_403));
     }
 
+    // Pentest launch (EXPERIMENTAL, off by default) - runs a single fixed,
+    // operator-configured command (--pentest-launch-cmd), never anything
+    // derived from the request itself. Backs the webUI's "Enable pentest"
+    // button on the /pentest panel. See PENTEST_APPLIANCE.md section 4.8 and
+    // scripts/windows/enable-pentest.ps1.
+    if (params.enable_pentest_launch && !params.pentest_launch_cmd.empty()) {
+        SRV_WRN("%s", "-----------------\n");
+        SRV_WRN("%s", "Pentest launch is enabled, do not expose server to untrusted environments\n");
+        SRV_WRN("%s", "This feature is EXPERIMENTAL and may be removed or changed in future versions\n");
+        SRV_WRN("%s", "-----------------\n");
+        std::string pentest_launch_cmd = params.pentest_launch_cmd;
+        ctx_http.post("/pentest/enable", ex_wrapper(
+            [pentest_launch_cmd](const server_http_req &) -> server_http_res_ptr {
+                // Fire-and-forget: the command itself (enable-pentest.ps1 /
+                // tools/pentest_appliance.sh start) does its own health-check
+                // polling and can take over a minute, so this thread just
+                // runs to completion in the background - the webUI learns
+                // readiness by polling pentest-ui-api's own port directly,
+                // not from this request.
+                std::thread([pentest_launch_cmd]() {
+#ifdef _WIN32
+                    std::vector<std::string> args = {"cmd", "/c", pentest_launch_cmd};
+#else
+                    std::vector<std::string> args = {"sh", "-c", pentest_launch_cmd};
+#endif
+                    run_process(args, 64 * 1024, 180);
+                }).detach();
+                auto res = std::make_unique<server_http_res>();
+                res->status = 202;
+                res->data = safe_json_to_str({{"status", "starting"}});
+                return res;
+            }));
+    } else {
+        ctx_http.post("/pentest/enable", ex_wrapper(res_403));
+    }
+
     // EXPERIMENTAL built-in tools
     if (!params.server_tools.empty()) {
         try {

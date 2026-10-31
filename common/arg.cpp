@@ -3136,6 +3136,22 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_examples({LLAMA_EXAMPLE_SERVER}).set_env("LLAMA_ARG_UI_MCP_PROXY"));
     add_opt(common_arg(
+        {"--enable-pentest-launch"},
+        {"--no-enable-pentest-launch"},
+        "experimental: whether POST /pentest/enable may run --pentest-launch-cmd - do not enable in untrusted environments (default: disabled)",
+        [](common_params & params, bool value) {
+            params.enable_pentest_launch = value;
+        }
+    ).set_examples({LLAMA_EXAMPLE_SERVER}).set_env("LLAMA_ARG_ENABLE_PENTEST_LAUNCH"));
+    add_opt(common_arg(
+        {"--pentest-launch-cmd"}, "CMD",
+        "shell command POST /pentest/enable runs to bring up the pentest appliance stack "
+        "(ignored unless --enable-pentest-launch is also set)",
+        [](common_params & params, const std::string & value) {
+            params.pentest_launch_cmd = value;
+        }
+    ).set_examples({LLAMA_EXAMPLE_SERVER}).set_env("LLAMA_ARG_PENTEST_LAUNCH_CMD"));
+    add_opt(common_arg(
         {"--tools"}, "TOOL1,TOOL2,...",
         "experimental: whether to enable built-in tools for AI agents - do not enable in untrusted environments (default: no tools)\n"
         "specify \"all\" to enable all tools\n"
