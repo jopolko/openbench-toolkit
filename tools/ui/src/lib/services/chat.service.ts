@@ -18,7 +18,8 @@ import {
 	SSE_DONE_MARKER,
 	STREAM_VISIBILITY_KICK_MS,
 	STREAM_RESUME_LOCALSTORAGE_KEY_PREFIX,
-	API_STREAM
+	API_STREAM,
+	API_OPENROUTER
 } from '$lib/constants';
 import {
 	AttachmentType,
@@ -41,6 +42,7 @@ import type {
 	DatabaseMessageExtraMcpResource
 } from '$lib/types';
 import { modelsStore } from '$lib/stores/models.svelte';
+import { modelProviderStore } from '$lib/stores/model-provider.svelte';
 import { settingsStore } from '../stores/settings.svelte';
 import { capImageDataURLSize } from '../utils/cap-img-size';
 
@@ -344,10 +346,29 @@ export class ChatService {
 			if (stream && conversationId) {
 				headers['X-Conversation-Id'] = streamIdentity(conversationId, options.model);
 			}
-			const response = await fetch(API_CHAT.COMPLETIONS, {
+			// OpenRouter mode bypasses the local router entirely - it's a different
+			// backend, reached through a different sidecar (see
+			// tools/openrouter_proxy.py), and only understands the plain OpenAI
+			// schema, not llama.cpp's server extensions (chat_template_kwargs,
+			// reasoning_control, the sampler/penalty knobs, ...), so it gets a
+			// trimmed-down body rather than the one built above.
+			const isOpenRouter = modelProviderStore.isOpenRouter;
+			const targetUrl = isOpenRouter ? API_OPENROUTER.COMPLETIONS : API_CHAT.COMPLETIONS;
+			const outgoingBody = isOpenRouter
+				? {
+						model: modelProviderStore.state.openrouterModel,
+						messages: requestBody.messages,
+						stream: requestBody.stream,
+						tools: requestBody.tools,
+						...(temperature !== undefined ? { temperature } : {}),
+						...(requestBody.max_tokens !== undefined ? { max_tokens: requestBody.max_tokens } : {})
+					}
+				: requestBody;
+
+			const response = await fetch(targetUrl, {
 				method: 'POST',
 				headers,
-				body: JSON.stringify(requestBody),
+				body: JSON.stringify(outgoingBody),
 				signal
 			});
 
@@ -623,6 +644,12 @@ export class ChatService {
 		excludeReasoning?: boolean,
 		signal?: AbortSignal
 	): Promise<void> {
+		// Pre-filling the KV cache ahead of the real request is a local
+		// llama-server optimization (n_predict: 0 below is its own server
+		// extension) - meaningless for OpenRouter, which has no local cache to
+		// warm, so just skip it in that mode.
+		if (modelProviderStore.isOpenRouter) return;
+
 		const normalizedMessages: ApiChatMessageData[] = (
 			await Promise.all(
 				messages.map((msg) => {

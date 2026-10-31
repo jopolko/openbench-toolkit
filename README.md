@@ -6,10 +6,15 @@ one web UI:
 - **MoE VRAM Pager** (below) - the llama.cpp fork that does VRAM-tier expert
   streaming, plus the model picker.
 - **chat** - the embedded web UI (`tools/ui/`), with per-model reasoning-effort
-  and context-size controls.
+  and context-size controls. Normally driven by whatever model the router is
+  serving; the Load GGUF dialog's "OpenRouter" tab can point it at a
+  cloud-hosted OpenRouter model instead, using your own API key - optional,
+  off by default, see [PENTEST_APPLIANCE.md](PENTEST_APPLIANCE.md) section 4.7.
 - **pentest** - an optional headless agentic pentest loop
   (`tools/pentest_agent.py`) and its web console, driven by whatever model the
-  router is serving. See [PENTEST_APPLIANCE.md](PENTEST_APPLIANCE.md).
+  router is serving, or (same OpenRouter option as chat) a user-chosen
+  OpenRouter model - Anthropic/Claude models are refused either way. See
+  [PENTEST_APPLIANCE.md](PENTEST_APPLIANCE.md).
 
 ## Installation and system requirements
 
@@ -398,13 +403,13 @@ does and how to run any piece by hand instead.
 ### Start / stop / restart
 
 ```bash
-tools/pentest_appliance.sh start     # msf-db -> msfrpcd -> metasploit-mcp -> zap -> pentest-ui-api -> llama-moe-router
+tools/pentest_appliance.sh start     # msf-db -> msfrpcd -> metasploit-mcp -> zap -> pentest-ui-api -> openrouter-proxy -> llama-moe-router
 tools/pentest_appliance.sh stop      # reverse order
 tools/pentest_appliance.sh restart
 tools/pentest_appliance.sh status
 ```
 
-Wraps the six systemd services in the dependency order the Metasploit
+Wraps the seven systemd services in the dependency order the Metasploit
 chain needs, stopping in reverse so nothing loses a dependency mid-
 teardown. Requires the passwordless-sudo rule the setup script installs -
 without it, `sudo` blocks mid-sequence waiting for a password with no
@@ -674,8 +679,13 @@ frontend visualization are not built yet.
 - `tools/pentest_report.py`: turns a run's JSON log into a PDF report.
 - `tools/setup_pentest_appliance.sh`: idempotent, from-scratch install of
   the whole pentest appliance stack.
-- `tools/pentest_appliance.sh`: start/stop/restart/status for the six
+- `tools/pentest_appliance.sh`: start/stop/restart/status for the seven
   appliance systemd services, in dependency order.
+- `tools/openrouter_proxy.py`: loopback sidecar that lets chat use an
+  OpenRouter model without the API key reaching the browser (optional,
+  off by default - see PENTEST_APPLIANCE.md section 4.7).
+- `tools/pentest_secrets.py`: shared secrets-file lookup for
+  `pentest_agent.py` and `openrouter_proxy.py`.
 - `PENTEST_APPLIANCE.md`: from-scratch setup for the pentest appliance
   layer - see [Pentest appliance](#pentest-appliance) above.
 

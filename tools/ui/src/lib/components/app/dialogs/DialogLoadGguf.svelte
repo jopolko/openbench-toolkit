@@ -6,6 +6,8 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Loader2 } from '@lucide/svelte';
+	import { API_OPENROUTER } from '$lib/constants';
+	import { modelProviderStore } from '$lib/stores/model-provider.svelte';
 
 	interface Assessment {
 		fit: string;
@@ -42,20 +44,39 @@
 		modified_unix: number;
 	}
 
+	interface OpenRouterModel {
+		id: string;
+		name?: string;
+		supported_parameters?: string[];
+	}
+
 	let { open = $bindable(), onLoaded }: Props = $props();
 
-	let mode = $state<'local' | 'url' | 'ollama'>('url');
+	let mode = $state<'local' | 'url' | 'ollama' | 'openrouter'>('url');
 	let localPath = $state('');
 	let remoteUrl = $state('');
 	let ollamaModels = $state<OllamaModel[]>([]);
 	let ollamaLoading = $state(false);
 	let ollamaError = $state('');
 	let selectedOllamaModel = $state<OllamaModel | null>(null);
+	let openrouterModels = $state<OpenRouterModel[]>([]);
+	let openrouterLoading = $state(false);
+	let openrouterError = $state('');
+	let openrouterFilter = $state('');
+	let selectedOpenrouterModel = $state<OpenRouterModel | null>(null);
 	let assessing = $state(false);
 	let assessment = $state<Assessment | null>(null);
 	let assessError = $state('');
 	let override = $state(false);
 	let proceeding = $state(false);
+
+	const filteredOpenrouterModels = $derived(
+		openrouterFilter.trim()
+			? openrouterModels.filter((m) =>
+					m.id.toLowerCase().includes(openrouterFilter.trim().toLowerCase())
+				)
+			: openrouterModels
+	);
 
 	// Ollama models resolve to a local blob path - from here on they're loaded exactly like a
 	// hand-typed local path, just with a friendlier alias attached (see proceed()).
@@ -79,6 +100,26 @@
 		}
 	}
 
+	async function loadOpenrouterModels() {
+		openrouterLoading = true;
+		openrouterError = '';
+		try {
+			const resp = await fetch(API_OPENROUTER.MODELS);
+			const body = await resp.json().catch(() => ({}));
+			if (!resp.ok) throw new Error(body.error?.message || `Request failed (${resp.status})`);
+			openrouterModels = ((body.data ?? []) as OpenRouterModel[]).sort((a, b) =>
+				a.id.localeCompare(b.id)
+			);
+		} catch (e) {
+			openrouterError =
+				e instanceof Error
+					? e.message
+					: 'openrouter-proxy sidecar not reachable - is it running (port 8087)?';
+		} finally {
+			openrouterLoading = false;
+		}
+	}
+
 	function reset() {
 		mode = 'url';
 		localPath = '';
@@ -86,6 +127,10 @@
 		ollamaModels = [];
 		ollamaError = '';
 		selectedOllamaModel = null;
+		openrouterModels = [];
+		openrouterError = '';
+		openrouterFilter = '';
+		selectedOpenrouterModel = null;
 		assessing = false;
 		assessment = null;
 		assessError = '';
@@ -157,6 +202,16 @@
 	}
 
 	async function proceed() {
+		if (mode === 'openrouter') {
+			// Nothing to download or load - just point the app at OpenRouter
+			// instead of the local router. No llama-server call at all here.
+			if (!selectedOpenrouterModel) return;
+			modelProviderStore.useOpenRouter(selectedOpenrouterModel.id);
+			onLoaded();
+			handleOpenChange(false);
+			return;
+		}
+
 		if (!assessment || proceeding) return;
 		if (assessment.fit !== 'fits' && !override) return;
 		proceeding = true;
@@ -187,6 +242,9 @@
 				const message = body.error?.message || body.error || `Request failed (${resp.status})`;
 				throw new Error(message);
 			}
+			// A local GGUF just got loaded - make sure we're not still pointed
+			// at OpenRouter from an earlier dialog visit.
+			modelProviderStore.useLocal();
 			onLoaded();
 			handleOpenChange(false);
 		} catch (e) {
@@ -203,7 +261,9 @@
 	};
 
 	const canProceed = $derived(
-		!!assessment && !proceeding && (assessment.fit === 'fits' || override)
+		mode === 'openrouter'
+			? !!selectedOpenrouterModel
+			: !!assessment && !proceeding && (assessment.fit === 'fits' || override)
 	);
 </script>
 
@@ -212,8 +272,13 @@
 		<Dialog.Header>
 			<Dialog.Title>Load GGUF</Dialog.Title>
 			<Dialog.Description>
-				Point at a GGUF file already on disk, or a direct URL to one, and check whether it fits
-				this hardware before downloading or loading it.
+				{#if mode === 'openrouter'}
+					Pick an OpenRouter model to drive chat instead of a local GGUF - calls go through your
+					own OpenRouter API key, configured server-side.
+				{:else}
+					Point at a GGUF file already on disk, or a direct URL to one, and check whether it fits
+					this hardware before downloading or loading it.
+				{/if}
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -249,9 +314,62 @@
 			>
 				Ollama
 			</Button>
+			<Button
+				size="sm"
+				variant={mode === 'openrouter' ? 'default' : 'outline'}
+				onclick={() => {
+					mode = 'openrouter';
+					if (openrouterModels.length === 0) void loadOpenrouterModels();
+				}}
+			>
+				OpenRouter
+			</Button>
 		</div>
 
-		{#if mode === 'ollama'}
+		{#if mode === 'openrouter'}
+			<div class="flex flex-col gap-2">
+				<div class="flex items-center justify-between">
+					<Label>OpenRouter models</Label>
+					<Button size="sm" variant="ghost" disabled={openrouterLoading} onclick={loadOpenrouterModels}>
+						{#if openrouterLoading}
+							<Loader2 class="h-3.5 w-3.5 animate-spin" />
+						{/if}
+						Rescan
+					</Button>
+				</div>
+				<Input
+					bind:value={openrouterFilter}
+					placeholder="Filter by model id (e.g. 'qwen', 'gpt-4o')"
+				/>
+				{#if openrouterError}
+					<p class="text-sm text-destructive">{openrouterError}</p>
+				{:else if !openrouterLoading && filteredOpenrouterModels.length === 0}
+					<p class="text-sm text-muted-foreground">
+						{openrouterModels.length === 0
+							? 'No models loaded yet.'
+							: 'No models match that filter.'}
+					</p>
+				{:else}
+					<div class="flex max-h-60 flex-col gap-1 overflow-y-auto">
+						{#each filteredOpenrouterModels as m (m.id)}
+							<button
+								type="button"
+								class="flex items-center justify-between rounded-md border px-2 py-1.5 text-left text-sm hover:bg-accent {selectedOpenrouterModel?.id ===
+								m.id
+									? 'border-primary bg-accent'
+									: 'border-border/50'}"
+								onclick={() => (selectedOpenrouterModel = m)}
+							>
+								<span>{m.name ?? m.id}</span>
+								{#if m.supported_parameters && !m.supported_parameters.includes('tools')}
+									<span class="text-xs text-muted-foreground">no tool calling</span>
+								{/if}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{:else if mode === 'ollama'}
 			<div class="flex flex-col gap-2">
 				<div class="flex items-center justify-between">
 					<Label>Installed Ollama models</Label>
