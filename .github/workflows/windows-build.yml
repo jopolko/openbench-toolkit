@@ -1,0 +1,85 @@
+name: Windows build
+
+# Produces a downloadable llama-server.exe (+ webUI, CUDA, OpenSSL) built on
+# GitHub's own Windows runners, so building from source doesn't depend on
+# whatever machine you're on having the full local toolchain (VS2022 Build
+# Tools, CUDA Toolkit, Node.js, ...) - see scripts/windows/build.ps1 for the
+# equivalent local build this mirrors.
+#
+# GitHub-hosted Windows runners have no GPU, so this is a compile-only check -
+# it proves the binary builds, not that it runs correctly on real hardware.
+# Download the artifact from this workflow's run page (Actions tab) once it
+# finishes; "ship small" still applies - the large CUDA/VC++ runtime DLLs are
+# NOT bundled, scripts\windows\preflight.ps1 -AutoFix fetches those on first
+# run on the machine that actually runs the binary.
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch: {}
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC dev environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Set up Node.js (webUI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install CUDA Toolkit
+        uses: Jimver/cuda-toolkit@v0.2.19
+        id: cuda-toolkit
+        with:
+          cuda: '12.9.0'
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
+
+      - name: Install Ninja + OpenSSL
+        shell: pwsh
+        run: choco install ninja openssl --no-progress -y
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $openssl = 'C:\Program Files\OpenSSL-Win64'
+          cmake -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DGGML_CUDA=ON `
+            -DLLAMA_BUILD_UI=ON `
+            -DLLAMA_OPENSSL=ON `
+            -DOPENSSL_ROOT_DIR="$openssl"
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --target llama-server -j $env:NUMBER_OF_PROCESSORS
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\scripts | Out-Null
+          Copy-Item build\bin\llama-server.exe dist\
+          Get-ChildItem build\bin\*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination dist\
+          Copy-Item 'C:\Program Files\OpenSSL-Win64\libssl-3-x64.dll'    dist\ -ErrorAction SilentlyContinue
+          Copy-Item 'C:\Program Files\OpenSSL-Win64\libcrypto-3-x64.dll' dist\ -ErrorAction SilentlyContinue
+          Copy-Item -Recurse scripts\windows dist\scripts\windows
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-server-windows-cuda
+          path: dist\
+          retention-days: 14
+          if-no-files-found: error
