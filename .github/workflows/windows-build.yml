@@ -24,7 +24,11 @@ concurrency:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Pinned, not windows-latest: that label has moved to a VS2026 image, and
+    # CUDA 12.x's nvcc rejects anything newer than VS2022 as a host compiler
+    # (see host_config.h's version check) - windows-2022 matches what
+    # scripts/windows/build.ps1 and CUDA 12.6 both actually support.
+    runs-on: windows-2022
     steps:
       - name: Checkout
         uses: actions/checkout@v4
