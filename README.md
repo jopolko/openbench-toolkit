@@ -500,16 +500,19 @@ optional pentest layer:
 | `ZAP_API_KEY` | Yes, for ZAP | Same idea, local REST API auth for the ZAP daemon (loopback, port 8090). |
 | `BRAVE_API_KEY` | No | A real external account: Brave Search API (free tier, 2,000 queries/month), used by `google_dork_search` for real operator precision. Without it, dorking still works with zero config via DuckDuckGo's HTML results, just noisier. |
 | `NVD_API_KEY` | No | A real external account: NIST NVD's API key, raises the rate limit on `cve_lookup`/`cve_lookup_cpe`. Without it, lookups still work against NVD's public (lower) rate limit. |
+| `OPENROUTER_API_KEY` | No | A real external account: your OpenRouter key, enables the OpenRouter model option in chat and the pentest agent (see [Pentest appliance](#pentest-appliance) section 4.7). Without it, that option just isn't available. |
 
-All four live in one secrets file, never in code or git. The resolver checks,
+All five live in one secrets file, never in code or git. The resolver checks,
 first existing wins: `$OPENBENCH_ENV_FILE`, then
 `${XDG_CONFIG_HOME:-~/.config}/openbench-toolkit/secrets.env`, then
-`<repo root>/.env` (git-ignored; copy `.env.example`), then the legacy
-`/var/secrets/moe-vram-pager.env`. See
-[PENTEST_APPLIANCE.md](PENTEST_APPLIANCE.md#5-secrets) for exactly where to
-put them. NIST NVD itself is always contacted for CVE lookups regardless of
-whether `NVD_API_KEY` is set - it's a public API, the key just lifts the
-rate limit.
+`<repo root>/.env` (git-ignored; copy `.env.example`), then
+`~/secrets/moe-vram-pager.env` (on Windows, the same
+`%USERPROFILE%\secrets\moe-vram-pager.env` `setup-pentest-mcp.ps1` already
+uses for `MSF_PASSWORD`), then the legacy `/var/secrets/moe-vram-pager.env`
+on Linux. See [PENTEST_APPLIANCE.md](PENTEST_APPLIANCE.md#5-secrets) for
+exactly where to put them. NIST NVD itself is always contacted for CVE
+lookups regardless of whether `NVD_API_KEY` is set - it's a public API, the
+key just lifts the rate limit.
 
 ### Default chat system prompt
 
